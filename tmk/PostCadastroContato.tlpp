@@ -12,6 +12,9 @@ Function PostCadastroContato() As Object
     Local aEndereco  As Array
     Local aTelefone  As Array
     Local aAuxDados  As Array
+    Local aErros     As Array
+    Local cErro      As String
+    Local nErro      As Integer
 
     Private lMsErroAuto As Logical
     lMsErroAuto := .F.
@@ -22,7 +25,8 @@ Function PostCadastroContato() As Object
     If Empty(cJson)
         oResponse:SetStatus(400)
         oResponse:SetBody(JsonObject():New())
-        oResponse:GetBody():Set("status",  "erro")
+        oResponse:GetBody():Set("id",      "")
+        oResponse:GetBody():Set("success", .F.)
         oResponse:GetBody():Set("message", "Body não informado.")
         Return oResponse
     EndIf
@@ -31,7 +35,8 @@ Function PostCadastroContato() As Object
     If oBody:FromJson(cJson) != Nil
         oResponse:SetStatus(400)
         oResponse:SetBody(JsonObject():New())
-        oResponse:GetBody():Set("status",  "erro")
+        oResponse:GetBody():Set("id",      "")
+        oResponse:GetBody():Set("success", .F.)
         oResponse:GetBody():Set("message", "JSON inválido.")
         Return oResponse
     EndIf
@@ -67,10 +72,17 @@ Function PostCadastroContato() As Object
     MSExecAuto({|x,y,z,a,b| TMKA070(x,y,z,a,b)}, aContato, 3, aEndereco, aTelefone, .F.)
 
     If lMsErroAuto
+        aErros := GetAutoGRLog()
+        cErro  := ""
+        For nErro := 1 To Len(aErros)
+            cErro += aErros[nErro]
+        Next nErro
+
         oResponse:SetStatus(422)
         oResponse:SetBody(JsonObject():New())
-        oResponse:GetBody():Set("status",  "erro")
-        oResponse:GetBody():Set("message", GetAutoGRLog())
+        oResponse:GetBody():Set("id",      "")
+        oResponse:GetBody():Set("success", .F.)
+        oResponse:GetBody():Set("message", cErro)
     Else
         oResponse:SetStatus(201)
         oResponse:SetBody(JsonObject():New())
