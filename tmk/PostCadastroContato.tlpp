@@ -23,7 +23,9 @@ User Function postContato()
     Local aTelefone := {}
     Local jRet, jBody
 
-    Private lMsErroAuto := .F.
+    Private lMsErroAuto     := .F.
+    Private lMsHelpAuto     := .T.
+    Private lAutoErrNoFile  := .T.
 
     oRest:setKeyHeaderResponse("Content-Type", "application/json")
     cBody  := oRest:GetBodyRequest()
