@@ -2,140 +2,155 @@
 #include "tlpp-rest.th"
 #include "totvs.ch"
 
-Static Function FnErrResp(oResp As Object, nStatus As Integer, cMsg As String) As Object
-    oResp:SetStatus(nStatus)
-    oResp:SetBody(JsonObject():New())
-    oResp:GetBody():Set("id",      "")
-    oResp:GetBody():Set("success", .F.)
-    oResp:GetBody():Set("message", cMsg)
-Return oResp
+/*/{Protheus.doc} POST - postContato
+    Método POST para Inclusão de Cadastro de Contato
+/*/
+@Post(endpoint="/api/tmk/v1/contato", description="Inclusão Cadastro de Contatos")
+User Function postContato()
+    Local aErros    := {}
+    Local aFones    := {}
+    Local aEnds     := {}
+    Local aAuxDados := {}
+    Local cTag      := ""
+    Local cBody     := ""
+    Local cErro     := ""
+    Local nI        := 0
+    Local nErro     := 0
+    Local oTel      := Nil
+    Local oEnd      := Nil
+    Local aContato  := {}
+    Local aEndereco := {}
+    Local aTelefone := {}
+    Local jRet, jBody
 
-@rest POST("/api/tmk/v1/contato")
-Function PostCadastroContato() As Object
+    Private lMsErroAuto := .F.
 
-    Local oResponse  As Object
-    Local oBody      As Object
-    Local cJson      As String
-    Local aContato   As Array
-    Local aEndereco  As Array
-    Local aTelefone  As Array
-    Local aAuxDados  As Array
-    Local aErros     As Array
-    Local aFones     As Array
-    Local aEnds      As Array
-    Local oTel       As Object
-    Local oEnd       As Object
-    Local cErro      As String
-    Local nErro      As Integer
-    Local nI         As Integer
+    oRest:setKeyHeaderResponse("Content-Type", "application/json")
+    cBody  := oRest:GetBodyRequest()
+    jRet   := JsonObject():New()
+    jBody  := JsonObject():New()
+    jBody:fromJson(cBody)
 
-    Private lMsErroAuto     := .F.
-    Private lMsHelpAuto     := .T.
-    Private lAutoErrNoFile  := .T.
-
-    oResponse := FWRestResponse():New()
-
-    cJson := FWRestRequest():New():GetBodyStr()
-    If Empty(cJson)
-        Return FnErrResp(oResponse, 400, "Body não informado.")
+    // 1. Validação de tags obrigatórias do contato
+    If jBody['nome'] == Nil .Or. Empty(jBody['nome'])
+        cTag := "nome"
+    ElseIf jBody['email'] == Nil .Or. Empty(jBody['email'])
+        cTag := "email"
+    ElseIf jBody['telefones'] == Nil .Or. Len(jBody['telefones']) == 0
+        cTag := "telefones"
+    ElseIf jBody['enderecos'] == Nil .Or. Len(jBody['enderecos']) == 0
+        cTag := "enderecos"
     EndIf
 
-    oBody := JsonObject():New()
-    If oBody:FromJson(cJson) != Nil
-        Return FnErrResp(oResponse, 400, "JSON inválido.")
+    If !Empty(cTag)
+        FnErrResp(jRet, 400, "Não encontrado tag " + cTag + " ou está em branco!")
+        oRest:setResponse(jRet:toJSon())
+        Return .T.
     EndIf
 
-    // Validação dos campos do contato
-    If Empty(oBody:Get("nome"))
-        Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: nome.")
-    EndIf
-    If Empty(oBody:Get("email"))
-        Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: email.")
-    EndIf
+    aFones := jBody['telefones']
+    aEnds  := jBody['enderecos']
 
-    aFones := oBody:Get("telefones")
-    aEnds  := oBody:Get("enderecos")
-
-    If aFones == Nil .Or. Len(aFones) == 0
-        Return FnErrResp(oResponse, 400, "Informe ao menos um telefone.")
-    EndIf
-    If aEnds == Nil .Or. Len(aEnds) == 0
-        Return FnErrResp(oResponse, 400, "Informe ao menos um endereço.")
-    EndIf
-
-    // Validação e montagem de telefones → tabela AGB
+    // 2. Validação e montagem de telefones → tabela AGB
     aTelefone := {}
     For nI := 1 To Len(aFones)
         oTel := aFones[nI]
-        If Empty(oTel:Get("telTipo"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: telefones[" + cValToChar(nI) + "].telTipo.")
+        If oTel['telTipo'] == Nil .Or. Empty(oTel['telTipo'])
+            FnErrResp(jRet, 400, "Não encontrado tag telefones[" + cValToChar(nI) + "].telTipo ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
-        If Empty(oTel:Get("telDDD"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: telefones[" + cValToChar(nI) + "].telDDD.")
+        If oTel['telDDD'] == Nil .Or. Empty(oTel['telDDD'])
+            FnErrResp(jRet, 400, "Não encontrado tag telefones[" + cValToChar(nI) + "].telDDD ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
-        If Empty(oTel:Get("telefone"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: telefones[" + cValToChar(nI) + "].telefone.")
+        If oTel['telefone'] == Nil .Or. Empty(oTel['telefone'])
+            FnErrResp(jRet, 400, "Não encontrado tag telefones[" + cValToChar(nI) + "].telefone ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
         aAuxDados := {}
-        AAdd(aAuxDados, {"AGB_TIPO",   oTel:Get("telTipo"),         Nil})
-        AAdd(aAuxDados, {"AGB_PADRAO", If(nI == 1, "1", "2"),       Nil})
-        AAdd(aAuxDados, {"AGB_DDI",    oTel:Get("telDDI"),          Nil})
-        AAdd(aAuxDados, {"AGB_DDD",    oTel:Get("telDDD"),          Nil})
-        AAdd(aAuxDados, {"AGB_TELEFO", oTel:Get("telefone"),        Nil})
+        AAdd(aAuxDados, {"AGB_TIPO",   oTel['telTipo'],          Nil})
+        AAdd(aAuxDados, {"AGB_PADRAO", If(nI == 1, "1", "2"),    Nil})
+        AAdd(aAuxDados, {"AGB_DDI",    oTel['telDDI'],           Nil})
+        AAdd(aAuxDados, {"AGB_DDD",    oTel['telDDD'],           Nil})
+        AAdd(aAuxDados, {"AGB_TELEFO", oTel['telefone'],         Nil})
         AAdd(aTelefone, aAuxDados)
     Next nI
 
-    // Validação e montagem de endereços → tabela AGA
+    // 3. Validação e montagem de endereços → tabela AGA
     aEndereco := {}
     For nI := 1 To Len(aEnds)
         oEnd := aEnds[nI]
-        If Empty(oEnd:Get("endTipo"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: enderecos[" + cValToChar(nI) + "].endTipo.")
+        If oEnd['endTipo'] == Nil .Or. Empty(oEnd['endTipo'])
+            FnErrResp(jRet, 400, "Não encontrado tag enderecos[" + cValToChar(nI) + "].endTipo ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
-        If Empty(oEnd:Get("endereco"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: enderecos[" + cValToChar(nI) + "].endereco.")
+        If oEnd['endereco'] == Nil .Or. Empty(oEnd['endereco'])
+            FnErrResp(jRet, 400, "Não encontrado tag enderecos[" + cValToChar(nI) + "].endereco ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
-        If Empty(oEnd:Get("cep"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: enderecos[" + cValToChar(nI) + "].cep.")
+        If oEnd['cep'] == Nil .Or. Empty(oEnd['cep'])
+            FnErrResp(jRet, 400, "Não encontrado tag enderecos[" + cValToChar(nI) + "].cep ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
-        If Empty(oEnd:Get("municipio"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: enderecos[" + cValToChar(nI) + "].municipio.")
+        If oEnd['municipio'] == Nil .Or. Empty(oEnd['municipio'])
+            FnErrResp(jRet, 400, "Não encontrado tag enderecos[" + cValToChar(nI) + "].municipio ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
-        If Empty(oEnd:Get("estado"))
-            Return FnErrResp(oResponse, 400, "Campo obrigatório não informado: enderecos[" + cValToChar(nI) + "].estado.")
+        If oEnd['estado'] == Nil .Or. Empty(oEnd['estado'])
+            FnErrResp(jRet, 400, "Não encontrado tag enderecos[" + cValToChar(nI) + "].estado ou está em branco!")
+            oRest:setResponse(jRet:toJSon())
+            Return .T.
         EndIf
         aAuxDados := {}
-        AAdd(aAuxDados, {"AGA_TIPO",   oEnd:Get("endTipo"),         Nil})
-        AAdd(aAuxDados, {"AGA_PADRAO", If(nI == 1, "1", "2"),       Nil})
-        AAdd(aAuxDados, {"AGA_END",    oEnd:Get("endereco"),        Nil})
-        AAdd(aAuxDados, {"AGA_CEP",    oEnd:Get("cep"),             Nil})
-        AAdd(aAuxDados, {"AGA_BAIRRO", oEnd:Get("bairro"),          Nil})
-        AAdd(aAuxDados, {"AGA_MUNDES", oEnd:Get("municipio"),       Nil})
-        AAdd(aAuxDados, {"AGA_EST",    oEnd:Get("estado"),          Nil})
+        AAdd(aAuxDados, {"AGA_TIPO",   oEnd['endTipo'],          Nil})
+        AAdd(aAuxDados, {"AGA_PADRAO", If(nI == 1, "1", "2"),    Nil})
+        AAdd(aAuxDados, {"AGA_END",    oEnd['endereco'],         Nil})
+        AAdd(aAuxDados, {"AGA_CEP",    oEnd['cep'],              Nil})
+        AAdd(aAuxDados, {"AGA_BAIRRO", oEnd['bairro'],           Nil})
+        AAdd(aAuxDados, {"AGA_MUNDES", oEnd['municipio'],        Nil})
+        AAdd(aAuxDados, {"AGA_EST",    oEnd['estado'],           Nil})
         AAdd(aEndereco, aAuxDados)
     Next nI
 
-    // Montagem do contato → tabela SU5
+    // 4. Montagem do contato → tabela SU5
     aContato := {}
-    AAdd(aContato, {"U5_FILIAL",  xFilial("SU5"),        Nil})
-    AAdd(aContato, {"U5_CONTAT",  oBody:Get("nome"),     Nil})
-    AAdd(aContato, {"U5_EMAIL",   oBody:Get("email"),    Nil})
+    AAdd(aContato, {"U5_FILIAL",  xFilial("SU5"),          Nil})
+    AAdd(aContato, {"U5_CONTAT",  AllTrim(jBody['nome']),   Nil})
+    AAdd(aContato, {"U5_EMAIL",   AllTrim(jBody['email']),  Nil})
 
+    // 5. Inclusão via ExecAuto (TMKA070)
     MSExecAuto({|x,y,z,a,b| TMKA070(x,y,z,a,b)}, aContato, 3, aEndereco, aTelefone, .F.)
 
+    // 6. Tratamento de retorno
     If lMsErroAuto
         aErros := GetAutoGRLog()
         cErro  := ""
         For nErro := 1 To Len(aErros)
-            cErro += aErros[nErro]
+            If !Empty(aErros[nErro])
+                cErro += AllTrim(aErros[nErro]) + CRLF
+            EndIf
         Next nErro
-        Return FnErrResp(oResponse, 422, cErro)
+        FnErrResp(jRet, 422, cErro)
+    Else
+        jRet['id']      := SU5->U5_CODCONT
+        jRet['success'] := .T.
+        jRet['message'] := "Contato cadastrado com sucesso."
     EndIf
 
-    oResponse:SetStatus(201)
-    oResponse:SetBody(JsonObject():New())
-    oResponse:GetBody():Set("id",      SU5->U5_CODCONT)
-    oResponse:GetBody():Set("success", .T.)
-    oResponse:GetBody():Set("message", "Contato cadastrado com sucesso.")
+    oRest:setResponse(jRet:toJSon())
 
-Return oResponse
+Return .T.
+
+Static Function FnErrResp(jRet As Object, nStatus As Integer, cMsg As String) As Logical
+    jRet['id']      := ""
+    jRet['success'] := .F.
+    jRet['message'] := cMsg
+    oRest:setStatus(nStatus)
+Return .T.
