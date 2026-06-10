@@ -1,1 +1,82 @@
-<cole o conteúdo acima>
+#include "tlpp-core.th"
+#include "tlpp-rest.th"
+#include "totvs.ch"
+
+@rest POST("/api/tmk/v1/contato")
+Function PostCadastroContato() As Object
+
+    Local oResponse  As Object
+    Local oBody      As Object
+    Local cJson      As String
+    Local aContato   As Array
+    Local aEndereco  As Array
+    Local aTelefone  As Array
+    Local aAuxDados  As Array
+
+    Private lMsErroAuto As Logical
+    lMsErroAuto := .F.
+
+    oResponse := FWRestResponse():New()
+
+    cJson := FWRestRequest():New():GetBodyStr()
+    If Empty(cJson)
+        oResponse:SetStatus(400)
+        oResponse:SetBody(JsonObject():New())
+        oResponse:GetBody():Set("status",  "erro")
+        oResponse:GetBody():Set("message", "Body não informado.")
+        Return oResponse
+    EndIf
+
+    oBody := JsonObject():New()
+    If oBody:FromJson(cJson) != Nil
+        oResponse:SetStatus(400)
+        oResponse:SetBody(JsonObject():New())
+        oResponse:GetBody():Set("status",  "erro")
+        oResponse:GetBody():Set("message", "JSON inválido.")
+        Return oResponse
+    EndIf
+
+    // aContato → tabela SU5
+    aContato := {}
+    AAdd(aContato, {"U5_FILIAL",  xFilial("SU5"),        Nil})
+    AAdd(aContato, {"U5_CONTAT",  oBody:Get("nome"),     Nil})
+    AAdd(aContato, {"U5_EMAIL",   oBody:Get("email"),    Nil})
+
+    // aTelefone → tabela AGB (array de arrays, um por telefone)
+    aTelefone := {}
+    aAuxDados := {}
+    AAdd(aAuxDados, {"AGB_TIPO",   oBody:Get("telTipo"),   Nil})
+    AAdd(aAuxDados, {"AGB_PADRAO", "1",                    Nil})
+    AAdd(aAuxDados, {"AGB_DDI",    oBody:Get("telDDI"),    Nil})
+    AAdd(aAuxDados, {"AGB_DDD",    oBody:Get("telDDD"),    Nil})
+    AAdd(aAuxDados, {"AGB_TELEFO", oBody:Get("telefone"),  Nil})
+    AAdd(aTelefone, aAuxDados)
+
+    // aEndereco → tabela AGA (array de arrays, um por endereço)
+    aEndereco := {}
+    aAuxDados := {}
+    AAdd(aAuxDados, {"AGA_TIPO",   oBody:Get("endTipo"),   Nil})
+    AAdd(aAuxDados, {"AGA_PADRAO", "1",                    Nil})
+    AAdd(aAuxDados, {"AGA_END",    oBody:Get("endereco"),  Nil})
+    AAdd(aAuxDados, {"AGA_CEP",    oBody:Get("cep"),       Nil})
+    AAdd(aAuxDados, {"AGA_BAIRRO", oBody:Get("bairro"),    Nil})
+    AAdd(aAuxDados, {"AGA_MUNDES", oBody:Get("municipio"), Nil})
+    AAdd(aAuxDados, {"AGA_EST",    oBody:Get("estado"),    Nil})
+    AAdd(aEndereco, aAuxDados)
+
+    MSExecAuto({|x,y,z,a,b| TMKA070(x,y,z,a,b)}, aContato, 3, aEndereco, aTelefone, .F.)
+
+    If lMsErroAuto
+        oResponse:SetStatus(422)
+        oResponse:SetBody(JsonObject():New())
+        oResponse:GetBody():Set("status",  "erro")
+        oResponse:GetBody():Set("message", GetAutoGRLog())
+    Else
+        oResponse:SetStatus(201)
+        oResponse:SetBody(JsonObject():New())
+        oResponse:GetBody():Set("id",      SU5->U5_CODCONT)
+        oResponse:GetBody():Set("success", .T.)
+        oResponse:GetBody():Set("message", "Contato cadastrado com sucesso.")
+    EndIf
+
+Return oResponse
